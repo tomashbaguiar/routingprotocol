@@ -7,6 +7,8 @@
 #include <netinet/in.h>
 #include <arpa/inet.h>
 
+#include <json-c/json.h>
+
 #define PORTA   55151                                                           // Porta padrão dos roteadores.
 
 /*
@@ -16,6 +18,12 @@ struct node {
     struct sockaddr_in addr;                                                    // Guarda o endereço do nó.
     int fd;                                                                     // Guarda o descritor do socket do nó.
 */
+
+
+/*********************************************************************************/
+char msg[] = "{\"type\": \"data\", \"source\": \"127.0.1.1\", \"destination\": \"127.0.0.1\", \"payload\": \"{\"destination\": \"127.0.0.1\"}\"}";
+/*********************************************************************************/
+
 
 //  ./router <ADDR> <PERIOD> [STARTUP]
 
@@ -51,29 +59,34 @@ int main(int argc, char *argv[])
 
 
 /********************************************* teste de configuração ***********************************************/
+json_object *jobj = json_tokener_parse(msg);
+json_parse(jobj);
+
 ssize_t recved = 0;
-char test = 0;
 struct sockaddr_in routerAddr;
 socklen_t routerLen = sizeof(routerAddr);
 memset(&routerAddr, 0, addrLen);
 if(!strcmp("0",argv[2]))    {
-    recved = recvfrom(myfd, (char *) &test, sizeof(char), 0, (struct sockaddr *) &routerAddr, &routerLen);
+    char *test = malloc(1024 * sizeof(char));
+    recved = recvfrom(myfd, (char *) test, (1024 * sizeof(char)), 0, (struct sockaddr *) &routerAddr, &routerLen);
     if(recved <= 0) {
         perror("recvfrom");
         return EXIT_FAILURE;
     }
-    fprintf(stdout, "[Received]:\t%c\tfrom\t[%s]\t%ld bytes\n", test, inet_ntoa(routerAddr.sin_addr), recved);
+    fprintf(stdout, "[Received]:\t%s\tfrom\t[%s]\t%ld bytes\n", test, inet_ntoa(routerAddr.sin_addr), recved);
+    free(test);
+    test = NULL;
 }
 else    {
-    test = 't';
     routerAddr = myAddr;
     routerAddr.sin_addr.s_addr = inet_addr(argv[3]);
-    recved = sendto(myfd, (char *) &test, sizeof(char), 0, (struct sockaddr *) &routerAddr, routerLen);
+    //recved = sendto(myfd, (char *) msg, strlen(msg), 0, (struct sockaddr *) &routerAddr, routerLen);
+    recved = sendto(myfd, (json_object *) jobj, sizeof(json_object), 0, (struct sockaddr *) &routerAddr, routerLen);
     if(recved == -1) {
         perror("sendto");
         return EXIT_FAILURE;
     }
-    fprintf(stdout, "[Sent]:\t%c\tto\t[%s]\t%ld bytes\n", test, inet_ntoa(routerAddr.sin_addr), recved);
+    fprintf(stdout, "[Sent]:\t%s\tto\t[%s]\t%ld bytes\n", msg, inet_ntoa(routerAddr.sin_addr), recved);
 }
 /*******************************************************************************************************************/
 
