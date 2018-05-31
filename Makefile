@@ -8,5 +8,5 @@ router: router.c
 	#$(CC) $(CFLAGS) router.c -o router $(LDFLAGS)
 	$(CC) $(CFLAGS) router.c -o router
 
-clean: router
+clean:
 	rm router

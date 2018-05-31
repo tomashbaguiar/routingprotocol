@@ -11,23 +11,26 @@
 
 #define PORTA   55151                                                           // Porta padrão dos roteadores.
 
-/*
 //  Estrutura que guarda as
-//  informações de um nó.
+//  informações de um nó vizinho.
 struct node {
     struct sockaddr_in addr;                                                    // Guarda o endereço do nó.
-    int fd;                                                                     // Guarda o descritor do socket do nó.
-*/
+};
+
+//  Estrutura para a tabela de
+//  roteamento.
+struct routing  {
+    char dest_ip[15];                                                           // Guarda o ip do nó de destino.
+    uint32_t weight;                                                            // Guarda o peso para o nó.
+    struct node *next;                                                          // Guarda o nó vizinho pelo qual passa a rota.
+};
+
+//  Funções e procedimentos do protocolo
+//
+void retrieve_command(char*, char*, uint32_t*);                                 // Procedimento que recebe os comandos.
 
 
-/*********************************************************************************/
-char msg[] = "{\"type\": \"data\", \"source\": \"127.0.1.1\", \"destination\": \"127.0.0.1\", \"payload\": \"{\"destination\": \"127.0.0.1\"}\"}";
-/*********************************************************************************/
-
-
-//  ./router <ADDR> <PERIOD> [STARTUP]
-
-int main(int argc, char *argv[])
+int main(int argc, char *argv[])                                                //  ./router <ADDR> <PERIOD> [STARTUP]
 {
     //  Verifica quantidade de argumentos   //
     if(argc < 3)    {
@@ -56,39 +59,72 @@ int main(int argc, char *argv[])
         return EXIT_FAILURE;
     }
 
+    //  Inicia o loop de recebimento de comandos    //
+    while(1)    {
+        //  Recebe o comando    //
+        char command[6] = {0};
+        char ip[15] = {0};
+        uint32_t weight = 0;
+        retrieve_command(command, ip, &weight);
 
+        //  Realiza a operação desejada //
+        if(!strcmp("add", command)) {                                           // Operação de adição de vértice.
+            //  Cria a estrutura de endereçamento do socket //
+            struct sockaddr_in newAddr;
+            newAddr = myAddr;
+            newAddr.sin_addr.s_addr = inet_addr(ip);
 
-/********************************************* teste de configuração ***********************************************/
-json_object *jobj = json_tokener_parse(msg);
-json_parse(jobj);
+            //  Coloca o novo nó na tabela de roteamento    //
+            //
+            //
+        }
+        else if(!strcmp("del", command))    {                                   // Operação de removação de vértice.
+            //  Verifica se o nó existe //
+            uint8_t exists = 0;
+            //
 
-ssize_t recved = 0;
-struct sockaddr_in routerAddr;
-socklen_t routerLen = sizeof(routerAddr);
-memset(&routerAddr, 0, addrLen);
-if(!strcmp("0",argv[2]))    {
-    char *test = malloc(1024 * sizeof(char));
-    recved = recvfrom(myfd, (char *) test, (1024 * sizeof(char)), 0, (struct sockaddr *) &routerAddr, &routerLen);
-    if(recved <= 0) {
-        perror("recvfrom");
-        return EXIT_FAILURE;
+            //  Remove o nó da tabela de roteamento //
+            //
+            if(exists)  {
+            }
+        }
+        else if(!strcmp("trace", command))  {
+            //  Verifica para quem mandar a mensagem    //
+            //
+            //
+
+            //  Envia a mensagem    //
+            //
+            ssize_t recved = 0;
+            struct sockaddr_in routerAddr;
+            socklen_t routerLen = sizeof(routerAddr);
+            memset(&routerAddr, 0, addrLen);
+            //recved = sendto(myfd, (json_object *) jobj, sizeof(json_object), 0, (struct sockaddr *) &routerAddr, routerLen);
+            if(recved == -1) {                                                  // Verifica envio da mensagem.
+                perror("sendto");
+                return EXIT_FAILURE;
+            }
+        }
+        else    {
+            fprintf(stderr, "Comando inválido.\n\tUtilização:");
+            fprintf(stderr, "\tadd <ip> <weight>\n\tdel <ip>\n\ttrace <ip>\n");
+        }
     }
-    fprintf(stdout, "[Received]:\t%s\tfrom\t[%s]\t%ld bytes\n", test, inet_ntoa(routerAddr.sin_addr), recved);
-    free(test);
-    test = NULL;
-}
-else    {
-    routerAddr = myAddr;
-    routerAddr.sin_addr.s_addr = inet_addr(argv[3]);
-    //recved = sendto(myfd, (char *) msg, strlen(msg), 0, (struct sockaddr *) &routerAddr, routerLen);
-    recved = sendto(myfd, (json_object *) jobj, sizeof(json_object), 0, (struct sockaddr *) &routerAddr, routerLen);
-    if(recved == -1) {
-        perror("sendto");
-        return EXIT_FAILURE;
-    }
-    fprintf(stdout, "[Sent]:\t%s\tto\t[%s]\t%ld bytes\n", msg, inet_ntoa(routerAddr.sin_addr), recved);
-}
-/*******************************************************************************************************************/
 
     return EXIT_SUCCESS;
 }
+
+void retrieve_command(char *command, char *ip, uint32_t *weigth)
+{
+    //  Recebe o comando    //
+    char *line = NULL;
+    size_t bufsize = 0;
+    getline(&line, &bufsize, stdin);
+    
+    //  Recupera os argumentos  //
+    if(weight == NULL)
+        sscanf(line, "%s %s", command, ip);
+    else
+        sscanf(line, "%s %s %u", command, ip, weight);
+}
+
