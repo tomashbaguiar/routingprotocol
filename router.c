@@ -1,3 +1,5 @@
+#define _POSIX_C_SOURCE 200809L
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -6,6 +8,7 @@
 #include <sys/types.h>
 #include <netinet/in.h>
 #include <arpa/inet.h>
+#include <unistd.h>
 
 #include <json-c/json.h>
 
@@ -68,11 +71,17 @@ int main(int argc, char *argv[])                                                
         retrieve_command(command, ip, &weight);
 
         //  Realiza a operação desejada //
-        if(!strcmp("add", command)) {                                           // Operação de adição de vértice.
+        if(!strcmp("exit", command)) {
+            fprintf(stdout, "Saindo...\n");
+            break;
+        }
+        else if(!strcmp("add", command)) {                                      // Operação de adição de vértice.
             //  Cria a estrutura de endereçamento do socket //
+            /*
             struct sockaddr_in newAddr;
             newAddr = myAddr;
             newAddr.sin_addr.s_addr = inet_addr(ip);
+            */
 
             //  Coloca o novo nó na tabela de roteamento    //
             //
@@ -97,7 +106,7 @@ int main(int argc, char *argv[])                                                
             //
             ssize_t recved = 0;
             struct sockaddr_in routerAddr;
-            socklen_t routerLen = sizeof(routerAddr);
+            //socklen_t routerLen = sizeof(routerAddr);
             memset(&routerAddr, 0, addrLen);
             //recved = sendto(myfd, (json_object *) jobj, sizeof(json_object), 0, (struct sockaddr *) &routerAddr, routerLen);
             if(recved == -1) {                                                  // Verifica envio da mensagem.
@@ -106,15 +115,18 @@ int main(int argc, char *argv[])                                                
             }
         }
         else    {
-            fprintf(stderr, "Comando inválido.\n\tUtilização:");
+            fprintf(stderr, "Comando inválido.\n\tUtilização:\n");
             fprintf(stderr, "\tadd <ip> <weight>\n\tdel <ip>\n\ttrace <ip>\n");
+            fprintf(stderr, "\texit\n");
         }
     }
+
+    close(myfd);
 
     return EXIT_SUCCESS;
 }
 
-void retrieve_command(char *command, char *ip, uint32_t *weigth)
+void retrieve_command(char *command, char *ip, uint32_t *weight)
 {
     //  Recebe o comando    //
     char *line = NULL;
