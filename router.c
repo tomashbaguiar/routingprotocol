@@ -3,7 +3,6 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-
 #include <sys/socket.h>
 #include <sys/types.h>
 #include <netinet/in.h>
@@ -14,24 +13,24 @@
 
 #define PORTA   55151                                                           // Porta padrão dos roteadores.
 
-//  Estrutura que guarda as
-//  informações de um nó vizinho.
-struct node {
-    struct sockaddr_in addr;                                                    // Guarda o endereço do nó.
-};
-
-//  Estrutura para a tabela de
-//  roteamento.
+//  Estrutura da tabela de roteamento   //
+typedef struct  {
+    char ip[15];                                                                // Guarda o endereço de IPv4 do nó.
+    uint32_t weight;                                                            // Guarda o custo de atingi-lo.
+    char next[15];                                                              // Guarda o próximo nó para atingi-lo.
+}
+Node;
 struct routing  {
-    char dest_ip[15];                                                           // Guarda o ip do nó de destino.
-    uint32_t weight;                                                            // Guarda o peso para o nó.
-    struct node *next;                                                          // Guarda o nó vizinho pelo qual passa a rota.
+    Node *table;                                                                // Guarda a tabela.
+    uint32_t nodcounter;                                                        // Guarda o número de nós na tabela.
 };
 
 //  Funções e procedimentos do protocolo
-//
-void retrieve_command(char*, char*, uint32_t*);                                 // Procedimento que recebe os comandos.
+void retrieve_command(char *command, char *ip, uint32_t *weight);               // Procedimento que recebe os comandos.
 
+
+
+struct routing *table = NULL;                                                   // Tabela de roteamento.
 
 int main(int argc, char *argv[])                                                //  ./router <ADDR> <PERIOD> [STARTUP]
 {
