@@ -12,30 +12,36 @@
 #include <json-c/json.h>
 
 #define PORTA   55151                                                           // Porta padrão dos roteadores.
-#define MAX_IP  254
+#define MAX_IP  255
 
 //  Estrutura da tabela de roteamento   //
 struct tableEntry  {
-    char *ip;                                                                   // Guarda o endereço de IPv4 do nó.
+    //char *ip;                                                                   // Guarda o endereço de IPv4 do nó.
     uint32_t cost;                                                              // Guarda o custo de atingi-lo.
     uint8_t nextHop;                                                            // Guarda o próximo nó para atingi-lo.
 };
 
-//  Estrutura da tabela de roteamento
-//  deste nó.
+//  Estrutura da tabela de roteamento   //
+//  deste nó.                           //
 struct topTable {
-    struct tableEntry *list[MAX_IP];                                            // Guarda a tabela de roteamento deste nó.
+    //struct tableEntry *list[MAX_IP];                                            // Guarda a tabela de roteamento deste nó.
+    struct tableEntry list[MAX_IP][MAX_IP];                                     // Guarda a tabela de roteamento deste nó e de seus vizinhos.
     int myID;                                                                   // Guarda id deste nó.
-    char *ipAddr;                                                               // Guarda IP deste nó.
+    //char *ipAddr;                                                               // Guarda IP deste nó.
 };
 
-//  Funções e procedimentos do protocolo
+//  Funções e procedimentos do protocolo    //
 void retrieve_command(char *command, char *ip, uint32_t *cost);                 // Procedimento que recebe os comandos.
-struct tableEntry createTableEntry(uint32_t id, char *ipAddr, uint32_t nextHop, uint32_t cost);// Função que cria novo vetor de um nó.
-
-
+//struct tableEntry createTableEntry(uint32_t id, char *ipAddr, uint32_t nextHop, uint32_t cost);// Função que cria novo vetor de um nó.
+struct tableEntry createTableEntry(char *ipAddr, uint32_t nextHop, uint32_t cost);// Função que cria novo vetor de um nó.
+void updateTables(uint8_t src, uint8_t dst, uint8_t cst);                       // Atualiza uma entrada na tabela.
+void disableLink(uint8_t nodeID);                                               // Retira um vizinho.
 uint8_t getID(struct tableEntry node);                                          // Função que retorna o ID de um nó.
+void initTable(char *myIp);                                                     // Procedimento que inicializa a tabela do nó.
 
+
+//  Variáveis globais   //
+struct topTable mySelf;                                                         // Guarda a tabela de roteamento deste nó.
 
 int main(int argc, char *argv[])                                                //  ./router <ADDR> <PERIOD> [STARTUP]
 {
@@ -44,6 +50,8 @@ int main(int argc, char *argv[])                                                
         fprintf(stderr, "Utilização:\t./router <ADDR> <PERIOD> [STARTUP]\n");
         return EXIT_FAILURE;
     }
+    char *myIp = malloc(strlen(argv[1] * sizeof(char)));
+    strcpy(myIP, argv[1]);
 
     //  Inicializa o socket //
     int myfd = socket(AF_INET, SOCK_DGRAM, 0);
@@ -58,13 +66,17 @@ int main(int argc, char *argv[])                                                
     memset(&myAddr, 0, addrLen);
     myAddr.sin_family = AF_INET;                                                // Socket IPv4.
     myAddr.sin_port = htons(PORTA);                                             // Escuta na PORTA.
-    myAddr.sin_addr.s_addr = inet_addr(argv[1]);                                // Endereço IP do roteador.
+    //myAddr.sin_addr.s_addr = inet_addr(argv[1]);                                // Endereço IP do roteador.
+    myAddr.sin_addr.s_addr = inet_addr(myIP);                                   // Endereço IP do roteador.
 
     //  Fixa socket a porta //
     if(bind(myfd, (struct sockaddr *) &myAddr, addrLen) == -1)  {               // Verifica erro em bind.
         perror("bind");
         return EXIT_FAILURE;
     }
+
+    //  Inicia a tabela de roteamento   //
+    initTable(myIP);
 
     //  Inicia o loop de recebimento de comandos    //
     while(1)    {
@@ -144,15 +156,58 @@ void retrieve_command(char *command, char *ip, uint32_t *weight)
         sscanf(line, "%s %s %u", command, ip, weight);
 }
 
-uint8_t getID(struct tableEntry node)
+uint8_t getID(char *ip)
 {
+    char *ipAddr = malloc(strlen(ip) * sizeof(char));
+    strcpy(ipAddr, ip);
     int8_t dotcounter = 3;
     while(dotcounter > 0)
     {
-        char aux = *(node.ip)++;
+        char aux = *(ipAddr)++;
         if(aux == '.')
             dotcounter--;
     }
 
-    return ((uint8_t) atoi(ip));
+    return ((uint8_t) atoi(ipAddr));
 }
+
+//struct tableEntry createTableEntry(uint8_t id, char *ipAddr, uint8_t nextHop, uint8_t cost)
+struct tableEntry createTableEntry(char *ipAddr, uint8_t nextHop, uint8_t cost)
+{
+    struct tableEntry new;
+    new.cost = cost;
+    new.id = getID(ipAddr);
+    new.netHop = nextHop;
+    //new.ipAddr = ipAddr;
+    return new;
+}
+
+void updateTables(uint8_t src, uint8_t dst, uint8_t cst)
+{
+    //  Verifica se existe caminho  //
+    if(cst == -1)   {
+        myTable[src]
+}
+
+void disableLink(uint8_t nodeID);                                               // Retira um vizinho.
+void initTable(char *myIp)
+{
+    //  Cria entrada do nó  //
+    uint8_t myID = getID(myIp);
+    //struct tableEntry me = createTableEntry(myID, myIp, myID, 0);
+    struct tableEntry me = createTableEntry(myIp, myID, 0);
+    //me.ipAddr = myIp;
+
+    //  Inicializa a tabela //
+    for(uint8_t i = 0; i < MAX_IP; i++) {
+        for(uint8_t j = 0; j < MAX_IP; j++) {
+            //mySelf.list[i][j].ip = NULL;
+            mySelf.list[i][j].cost = INF_COST;
+            mySelf.list[i][j].next = NOLINK;
+        }
+    }
+
+    //  Adiciona este nó à lista    //
+    mySelf.list[myID] = me;
+}
+
