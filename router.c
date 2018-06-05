@@ -13,6 +13,7 @@
 
 #define PORTA   55151                                                           // Porta padrão dos roteadores.
 #define MAX_IP  255
+#define IP_STD	"127.0.1."														// "IP" da rede.
 
 //  Estrutura da tabela de roteamento   //
 struct tableEntry  {
@@ -25,7 +26,7 @@ struct tableEntry  {
 //  deste nó.                           //
 struct topTable {
     //struct tableEntry *table[MAX_IP];                                            // Guarda a tabela de roteamento deste nó.
-    struct tableEntry table[MAX_IP][MAX_IP];                                    // Guarda a tabela de roteamento deste nó e de seus vizinhos.
+    struct tableEntry table[MAX_IP][MAX_IP];                                    // Guarda a tabela de roteamento deste nó e dos vizinhos.
     int myID;                                                                   // Guarda id deste nó.
     //char *ipAddr;                                                               // Guarda IP deste nó.
 };
@@ -92,7 +93,7 @@ int main(int argc, char *argv[])                                                
             fprintf(stdout, "Saindo...\n");
             break;
         }
-        else if(!strcmp("add", command)) {                                      // Operação de adição de vértice.
+        else if(!strcmp("add", command)) {                                      // Operação de adição de arco.
             //  Cria a estrutura de endereçamento do socket //
             /*
             struct sockaddr_in newAddr;
@@ -101,23 +102,16 @@ int main(int argc, char *argv[])                                                
             */
 
             //  Coloca o novo nó na tabela de roteamento    //
-            //
-            //
+            addLink(ip, weight);
         }
-        else if(!strcmp("del", command))    {                                   // Operação de removação de vértice.
-            //  Verifica se o nó existe //
-            uint8_t exists = 0;
-            //
-
-            //  Remove o nó da tabela de roteamento //
-            //
-            if(exists)  {
-            }
+        else if(!strcmp("del", command))    {                                   // Operação de removação de arco.
+            //  Remove o arco da tabela de roteamento //
+            disableLink(getID(ip));
         }
         else if(!strcmp("trace", command))  {
             //  Verifica para quem mandar a mensagem    //
             //
-            //
+            /****** busca na tabela deste nó (mySelf.table[getID(myIP)][i]) proximo nó para dst ip. */
 
             //  Envia a mensagem    //
             //
@@ -134,7 +128,7 @@ int main(int argc, char *argv[])                                                
         else    {
             fprintf(stderr, "Comando inválido.\n\tUtilização:\n");
             fprintf(stderr, "\tadd <ip> <weight>\n\tdel <ip>\n\ttrace <ip>\n");
-            fprintf(stderr, "\texit\n");
+            fprintf(stderr, "\tquit\n");
         }
     }
 
@@ -151,10 +145,7 @@ void retrieve_command(char *command, char *ip, uint32_t *weight)
     getline(&line, &bufsize, stdin);
     
     //  Recupera os argumentos  //
-    if(weight == NULL)
-        sscanf(line, "%s %s", command, ip);
-    else
-        sscanf(line, "%s %s %u", command, ip, weight);
+    sscanf(line, "%s %s %u", command, ip, weight);
 }
 
 uint8_t getID(char *ip)
@@ -170,6 +161,17 @@ uint8_t getID(char *ip)
     }
 
     return ((uint8_t) atoi(ipAddr));
+}
+
+char *getIP(uint8_t id)
+{
+	char *ip = malloc((strlen(IP_STD) + 4) * sizeof(char));
+	strcpy(ip, IP_STD);
+	char aux[4] = {0};
+	sprintf(aux, "%hu", id);
+	strcat(ip, aux);
+
+	return ip;
 }
 
 //struct tableEntry createTableEntry(uint8_t id, char *ipAddr, uint8_t nextHop, uint8_t cost)
@@ -193,31 +195,34 @@ void updateTables(uint8_t src, uint8_t dst, uint8_t cst)
 }
 */
 
+void addLink(char *nodeIP, uint32_t cost)
+{
+	mySelf.table[getID(myIP)][getID(nodeIP)] = createTableEntry(getID(nodeIP), cost);
+	mySelf.table[getID(nodeIP)][getID(myIP)] = createTableEntry(getID(myIP), cost);
+}
+
 void disableLink(uint8_t nodeID)
 {
     //  Retira vetor do node ID da tabela    //
     //mySelf.table[getID(myIP)][nodeID].cost = INF_COST;
     //mySelf.table[getID(myIP)][nodeID].nextHop = NOLINK;
     mySelf.table[getID(myIP)][nodeID] = createTableEntry(NOLINK, INF_COST);
+    mySelf.table[nodeID][getID(myIP)] = createTableEntry(NOLINK, INF_COST);
 }
 
 void initTable()
 {
+	//  Inicializa a tabela //
+    for(uint8_t i = 0; i < MAX_IP; i++)
+        for(uint8_t j = 0; j < MAX_IP; j++)
+            mySelf.table[i][j] = createTableEntry(NOLINK, INF_COST);
+
     //  Cria entrada do nó  //
     uint8_t myID = getID(myIP);
     //struct tableEntry me = createTableEntry(myID, myIp, myID, 0);
     //struct tableEntry me = createTableEntry(myIP, myID, 0);
     struct tableEntry me = createTableEntry(myID, 0);
-    //me.ipAddr = myIp;
-
-    //  Inicializa a tabela //
-    for(uint8_t i = 0; i < MAX_IP; i++) {
-        for(uint8_t j = 0; j < MAX_IP; j++) {
-            //mySelf.table[i][j].ip = NULL;
-            mySelf.table[i][j].cost = INF_COST;
-            mySelf.table[i][j].nextHop = NOLINK;
-        }
-    }
+    //me.ipAddr = myIp;    
 
     //  Adiciona este nó à tabela    //
     mySelf.table[myID][myID] = me;
