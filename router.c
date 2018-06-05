@@ -24,8 +24,8 @@ struct tableEntry  {
 //  Estrutura da tabela de roteamento   //
 //  deste nó.                           //
 struct topTable {
-    //struct tableEntry *list[MAX_IP];                                            // Guarda a tabela de roteamento deste nó.
-    struct tableEntry list[MAX_IP][MAX_IP];                                     // Guarda a tabela de roteamento deste nó e de seus vizinhos.
+    //struct tableEntry *table[MAX_IP];                                            // Guarda a tabela de roteamento deste nó.
+    struct tableEntry table[MAX_IP][MAX_IP];                                    // Guarda a tabela de roteamento deste nó e de seus vizinhos.
     int myID;                                                                   // Guarda id deste nó.
     //char *ipAddr;                                                               // Guarda IP deste nó.
 };
@@ -42,6 +42,7 @@ void initTable(char *myIp);                                                     
 
 //  Variáveis globais   //
 struct topTable mySelf;                                                         // Guarda a tabela de roteamento deste nó.
+char *myIP = NULL;                                                              // Guarda o endereço IP deste nó.
 
 int main(int argc, char *argv[])                                                //  ./router <ADDR> <PERIOD> [STARTUP]
 {
@@ -50,7 +51,7 @@ int main(int argc, char *argv[])                                                
         fprintf(stderr, "Utilização:\t./router <ADDR> <PERIOD> [STARTUP]\n");
         return EXIT_FAILURE;
     }
-    char *myIp = malloc(strlen(argv[1] * sizeof(char)));
+    myIp = malloc(strlen(argv[1] * sizeof(char)));
     strcpy(myIP, argv[1]);
 
     //  Inicializa o socket //
@@ -172,42 +173,53 @@ uint8_t getID(char *ip)
 }
 
 //struct tableEntry createTableEntry(uint8_t id, char *ipAddr, uint8_t nextHop, uint8_t cost)
-struct tableEntry createTableEntry(char *ipAddr, uint8_t nextHop, uint8_t cost)
+//struct tableEntry createTableEntry(char *ipAddr, uint8_t nextHop, uint8_t cost)
+struct tableEntry createTableEntry(uint8_t nextHop, uint8_t cost)
 {
     struct tableEntry new;
     new.cost = cost;
-    new.id = getID(ipAddr);
-    new.netHop = nextHop;
+    //new.id = getID(ipAddr);
+    new.nextHop = nextHop;
     //new.ipAddr = ipAddr;
     return new;
 }
 
+/*
 void updateTables(uint8_t src, uint8_t dst, uint8_t cst)
 {
     //  Verifica se existe caminho  //
     if(cst == -1)   {
         myTable[src]
 }
+*/
 
-void disableLink(uint8_t nodeID);                                               // Retira um vizinho.
-void initTable(char *myIp)
+void disableLink(uint8_t nodeID)
+{
+    //  Retira vetor do node ID da tabela    //
+    //mySelf.table[getID(myIP)][nodeID].cost = INF_COST;
+    //mySelf.table[getID(myIP)][nodeID].nextHop = NOLINK;
+    mySelf.table[getID(myIP)][nodeID] = createTableEntry(NOLINK, INF_COST);
+}
+
+void initTable()
 {
     //  Cria entrada do nó  //
-    uint8_t myID = getID(myIp);
+    uint8_t myID = getID(myIP);
     //struct tableEntry me = createTableEntry(myID, myIp, myID, 0);
-    struct tableEntry me = createTableEntry(myIp, myID, 0);
+    //struct tableEntry me = createTableEntry(myIP, myID, 0);
+    struct tableEntry me = createTableEntry(myID, 0);
     //me.ipAddr = myIp;
 
     //  Inicializa a tabela //
     for(uint8_t i = 0; i < MAX_IP; i++) {
         for(uint8_t j = 0; j < MAX_IP; j++) {
-            //mySelf.list[i][j].ip = NULL;
-            mySelf.list[i][j].cost = INF_COST;
-            mySelf.list[i][j].next = NOLINK;
+            //mySelf.table[i][j].ip = NULL;
+            mySelf.table[i][j].cost = INF_COST;
+            mySelf.table[i][j].nextHop = NOLINK;
         }
     }
 
-    //  Adiciona este nó à lista    //
-    mySelf.list[myID] = me;
+    //  Adiciona este nó à tabela    //
+    mySelf.table[myID][myID] = me;
 }
 
