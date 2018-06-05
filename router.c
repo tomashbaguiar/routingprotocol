@@ -12,25 +12,30 @@
 #include <json-c/json.h>
 
 #define PORTA   55151                                                           // Porta padrão dos roteadores.
+#define MAX_IP  254
 
 //  Estrutura da tabela de roteamento   //
-typedef struct  {
-    char ip[15];                                                                // Guarda o endereço de IPv4 do nó.
-    uint32_t weight;                                                            // Guarda o custo de atingi-lo.
-    char next[15];                                                              // Guarda o próximo nó para atingi-lo.
-}
-Node;
-struct routing  {
-    Node *table;                                                                // Guarda a tabela.
-    uint32_t nodcounter;                                                        // Guarda o número de nós na tabela.
+struct tableEntry  {
+    char *ip;                                                                   // Guarda o endereço de IPv4 do nó.
+    uint32_t cost;                                                              // Guarda o custo de atingi-lo.
+    uint8_t nextHop;                                                            // Guarda o próximo nó para atingi-lo.
+};
+
+//  Estrutura da tabela de roteamento
+//  deste nó.
+struct topTable {
+    struct tableEntry *list[MAX_IP];                                            // Guarda a tabela de roteamento deste nó.
+    int myID;                                                                   // Guarda id deste nó.
+    char *ipAddr;                                                               // Guarda IP deste nó.
 };
 
 //  Funções e procedimentos do protocolo
-void retrieve_command(char *command, char *ip, uint32_t *weight);               // Procedimento que recebe os comandos.
+void retrieve_command(char *command, char *ip, uint32_t *cost);                 // Procedimento que recebe os comandos.
+struct tableEntry createTableEntry(uint32_t id, char *ipAddr, uint32_t nextHop, uint32_t cost);// Função que cria novo vetor de um nó.
 
 
+uint8_t getID(struct tableEntry node);                                          // Função que retorna o ID de um nó.
 
-struct routing *table = NULL;                                                   // Tabela de roteamento.
 
 int main(int argc, char *argv[])                                                //  ./router <ADDR> <PERIOD> [STARTUP]
 {
@@ -70,7 +75,7 @@ int main(int argc, char *argv[])                                                
         retrieve_command(command, ip, &weight);
 
         //  Realiza a operação desejada //
-        if(!strcmp("exit", command)) {
+        if(!strcmp("quit", command)) {
             fprintf(stdout, "Saindo...\n");
             break;
         }
@@ -139,3 +144,15 @@ void retrieve_command(char *command, char *ip, uint32_t *weight)
         sscanf(line, "%s %s %u", command, ip, weight);
 }
 
+uint8_t getID(struct tableEntry node)
+{
+    int8_t dotcounter = 3;
+    while(dotcounter > 0)
+    {
+        char aux = *(node.ip)++;
+        if(aux == '.')
+            dotcounter--;
+    }
+
+    return ((uint8_t) atoi(ip));
+}
