@@ -11,12 +11,13 @@
 
 #include <json-c/json.h>
 #include <pthread.h>
+#include <sys/select.h>
 
 #define PORTA   55151                                                           // Porta padrão dos roteadores.
 #define MAX_IP  255
 #define IP_STD	"127.0.1."														// "IP" da rede.
 #define INF_COST 0xff
-#define NOLINK  -1
+#define NOLINK  0
 
 //  Estrutura da tabela de roteamento   //
 struct tableEntry  {
@@ -30,7 +31,7 @@ struct tableEntry  {
 struct topTable {
     //struct tableEntry *table[MAX_IP];                                            // Guarda a tabela de roteamento deste nó.
     struct tableEntry table[MAX_IP][MAX_IP];                                    // Guarda a tabela de roteamento deste nó e dos vizinhos.
-    int myID;                                                                   // Guarda id deste nó.
+    uint8_t myID;                                                               // Guarda id deste nó.
     //char *ipAddr;                                                               // Guarda IP deste nó.
 };
 
@@ -44,10 +45,10 @@ void disableLink(uint8_t nodeID);                                               
 uint8_t getID(char*);                                                           // Função que retorna o ID de um nó.
 void initTable();                                                               // Procedimento que inicializa a tabela do nó.
 void addLink(char *nodeIP, uint32_t cost);                                      // Procedimento que adiciona um arco a um nó.
+void printTable(struct tableEntry *table);                                      // Imprime tabela de roteamento.
 
-//  Procedimentos thread para recebimento/envio de atualizações na tabela   //
+//  Procedimento thread para envio de atualizações da tabela   //
 void *ptSendUpdate(void *args);                                                 // Envia pacotes de atualização para os vizinhos.
-void *ptRecvData(void*);                                                        // Recebe datagramas.
 
 //  Variáveis globais   //
 struct topTable mySelf;                                                         // Guarda a tabela de roteamento deste nó.
@@ -55,8 +56,7 @@ char *myIP = NULL;                                                              
 int myfd = 0;                                                                   // Guarda o descritor do socket.
 uint8_t neigh[MAX_IP] = {0};                                                    // Vetor que guarda a lista de adjacência.
 
-pthread_mutex_t lock;                                                           // Mutex para acesso à tabela de roteamento.
-uint8_t quit = 0;                                                               // Booleano para existência das threads.
+uint8_t quit = 0;                                                               // Booleano para existência da thread.
 
 int main(int argc, char *argv[])                                                //  ./router <ADDR> <PERIOD> [STARTUP]
 {
@@ -67,6 +67,7 @@ int main(int argc, char *argv[])                                                
     }
     myIP = malloc(strlen(argv[1]) * sizeof(char));
     strcpy(myIP, argv[1]);
+    mySelf.myID = getID(myIP);
     unsigned int period = (unsigned int) atoi(argv[2]);                         // Recebe o período de atualização da tabela.
 
     //  Inicializa o socket //
@@ -92,86 +93,103 @@ int main(int argc, char *argv[])                                                
 
     //  Inicia a tabela de roteamento   //
     initTable();
-
-    //  Inicializa os mutexes   //
-    if(pthread_mutex_init(&lock, NULL) != 0)    {                               // Verifica erro na inicialização.
-        perror("init-tmutex");
+    
+    //  Chama a thread de envio //
+    pthread_t stid;                                                 // Variáveis de pthread.
+    if(pthread_create(&stid, NULL, &ptSendUpdate, (void *) &period) != 0) { // Verifica erro.
+        perror("sUpdate-create");
         return EXIT_FAILURE;
     }
 
     //  Inicia o loop de recebimento de comandos    //
-    pthread_mutex_lock(&lock);                                                  // Bloqueia o mutex antes de iniciar o loop.
-    while(1)    {
-                
-        //  Chama as threads de envio e recebimento //
-        pthread_t stid, rtid;                                                   // Variáveis de pthread.
-        if(pthread_create(&stid, NULL, &ptSendUpdate, (void *) &period) != 0) { // Verifica erro.
-            perror("sUpdate-create");
-            return EXIT_FAILURE;
-        }
-        if(pthread_create(&rtid, NULL, &ptRecvData, NULL) != 0)   {             // Verifica erro.
-            perror("sUpdate-create");
-            return EXIT_FAILURE;
-        }
-        
-        //  Recebe o comando    //
-        char command[6] = {0};
-        char ip[15] = {0};
-        uint32_t weight = 0;
-        retrieve_command(command, ip, &weight);
-printf("comando = -%s-%s-%hu.\n", command, ip, weight);
-
-        //  Realiza a operação desejada //
-        if(!strcmp("quit", command)) {
-            fprintf(stdout, "Saindo...\n");
+    fd_set rfds;
+    //int maxfd = myfd;
+    struct tableEntry table[MAX_IP];
+    while(1)    {       
+        //  Chama select para verificar entrada de dados    //
+        FD_ZERO(&rfds);
+        FD_SET(myfd, &rfds);
+        FD_SET(STDIN_FILENO, &rfds);
+        if(select(FD_SETSIZE, &rfds, NULL, NULL, NULL) < 0) {
+            perror("select");
             quit = 1;                                                           // Sinal para destruir threads.
             if(pthread_join(stid, NULL) != 0)
                 perror("join-sender");
-            if(pthread_join(rtid, NULL) != 0)
-                perror("join-receiver");
-            break;
+            return EXIT_FAILURE;
         }
-        else if(!strcmp("add", command)) {                                      // Operação de adição de arco.
-            //  Cria a estrutura de endereçamento do socket //
-            /*
-            struct sockaddr_in newAddr;
-            newAddr = myAddr;
-            newAddr.sin_addr.s_addr = inet_addr(ip);
-            */
+        
+        if(FD_ISSET(STDIN_FILENO, &rfds))    {     
+            //  Recebe o comando    //
+            char command[6] = {0};
+            char ip[15] = {0};
+            uint32_t weight = 0;
+            retrieve_command(command, ip, &weight);
 
-            //  Coloca o novo nó na tabela de roteamento    //
-            addLink(ip, weight);
-        }
-        else if(!strcmp("del", command))    {                                   // Operação de removação de arco.
-            //  Remove o arco da tabela de roteamento //
-            disableLink(getID(ip));
-        }
-        else if(!strcmp("trace", command))  {
-            //  Verifica para quem mandar a mensagem    //
-            //
-            /****** busca na tabela deste nó (mySelf.table[myID][i]) proximo nó para dst ip. */
+            //  Realiza a operação desejada //
+            if(!strcmp("quit", command)) {
+                fprintf(stdout, "Saindo...\n");
+                quit = 1;                                                           // Sinal para destruir threads.
+                if(pthread_join(stid, NULL) != 0)
+                    perror("join-sender");
+                break;
+            }
+            else if(!strcmp("add", command)) {                                      // Operação de adição de arco.
+                //  Cria a estrutura de endereçamento do socket //
+                /*
+                struct sockaddr_in newAddr;
+                newAddr = myAddr;
+                newAddr.sin_addr.s_addr = inet_addr(ip);
+                */
 
-            //  Envia a mensagem    //
-            //
-            ssize_t recved = 0;
-            struct sockaddr_in routerAddr;
-            //socklen_t routerLen = sizeof(routerAddr);
-            memset(&routerAddr, 0, addrLen);
-            //recved = sendto(myfd, (json_object *) jobj, sizeof(json_object), 0, (struct sockaddr *) &routerAddr, routerLen);
-            if(recved == -1) {                                                  // Verifica envio da mensagem.
-                perror("sendto");
-                return EXIT_FAILURE;
+                //  Coloca o novo nó na tabela de roteamento    //
+                addLink(ip, weight);
+            }
+            else if(!strcmp("del", command))    {                                   // Operação de removação de arco.
+                //  Remove o arco da tabela de roteamento //
+                disableLink(getID(ip));
+            }
+            else if(!strcmp("trace", command))  {
+                //  Verifica para quem mandar a mensagem    //
+                //
+                /****** busca na tabela deste nó (mySelf.table[myID][i]) proximo nó para dst ip. */
+
+                //  Envia a mensagem    //
+                //
+                ssize_t recved = 0;
+                struct sockaddr_in routerAddr;
+                //socklen_t routerLen = sizeof(routerAddr);
+                memset(&routerAddr, 0, addrLen);
+                //recved = sendto(myfd, (json_object *) jobj, sizeof(json_object), 0, (struct sockaddr *) &routerAddr, routerLen);
+                if(recved == -1) {                                                  // Verifica envio da mensagem.
+                    perror("sendto");
+                    return EXIT_FAILURE;
+                }
+            }
+            else    {
+                fprintf(stderr, "Comando inválido.\n\tUtilização:\n");
+                fprintf(stderr, "\tadd <ip> <weight>\n\tdel <ip>\n\ttrace <ip>\n");
+                fprintf(stderr, "\tquit\n");
             }
         }
-        else    {
-            fprintf(stderr, "Comando inválido.\n\tUtilização:\n");
-            fprintf(stderr, "\tadd <ip> <weight>\n\tdel <ip>\n\ttrace <ip>\n");
-            fprintf(stderr, "\tquit\n");
+        else if(FD_ISSET(myfd, &rfds))   {
+            struct sockaddr_in addr;
+            socklen_t addrLen = sizeof(addr);
+                    
+            memset(table, 0, MAX_IP * sizeof(struct tableEntry));
+            ssize_t recvd = recvfrom(myfd, (struct tableEntry *) table, MAX_IP * sizeof(struct tableEntry), 0, (struct sockaddr *) &addr, &addrLen);
+            if(recvd == -1)  {
+                perror("recvfrom");
+                return EXIT_FAILURE;
+            }
+            else if(recvd == 0) {
+                fprintf(stderr, "Nó %s fechou-se.\n", inet_ntoa(addr.sin_addr));
+            }
+            else if(neigh[getID(inet_ntoa(addr.sin_addr))])    {
+                fprintf(stdout, "Received:[update] \tfrom %s.\n", inet_ntoa(addr.sin_addr));
+                printTable(table);
+            }
         }
-        pthread_mutex_unlock(&lock);                                            // Desbloqueia o mutex da tabela.
     }
-
-    pthread_mutex_destroy(&lock);                                               // Destrói o mutex.
 
     close(myfd);
 
@@ -236,11 +254,9 @@ void updateTables(uint8_t src, uint8_t dst, uint8_t cst)
 
 void addLink(char *nodeIP, uint32_t cost)
 {
-    pthread_mutex_lock(&lock);                                                  // Bloqueia o mutex antes de escrever.
 	mySelf.table[getID(myIP)][getID(nodeIP)] = createTableEntry(getID(nodeIP), cost);
-	mySelf.table[getID(nodeIP)][getID(myIP)] = createTableEntry(getID(myIP), cost);
+	//mySelf.table[getID(nodeIP)][getID(myIP)] = createTableEntry(getID(myIP), cost);
     neigh[getID(nodeIP)] = 1;
-    pthread_mutex_unlock(&lock);                                                // Desbloqueia o mutex depois de escrever.
 }
 
 void disableLink(uint8_t nodeID)
@@ -248,11 +264,9 @@ void disableLink(uint8_t nodeID)
     //  Retira vetor do node ID da tabela    //
     //mySelf.table[getID(myIP)][nodeID].cost = INF_COST;
     //mySelf.table[getID(myIP)][nodeID].nextHop = NOLINK;
-    pthread_mutex_lock(&lock);                                                  // Bloqueia o mutex antes de escrever.
     mySelf.table[getID(myIP)][nodeID] = createTableEntry(NOLINK, INF_COST);
-    mySelf.table[nodeID][getID(myIP)] = createTableEntry(NOLINK, INF_COST);
+    //mySelf.table[nodeID][getID(myIP)] = createTableEntry(NOLINK, INF_COST);
     neigh[nodeID] = 0;
-    pthread_mutex_unlock(&lock);                                                // Desbloqueia o mutex depois de escrever.
 }
 
 void initTable()
@@ -284,20 +298,11 @@ void *ptSendUpdate(void *args)
     struct tableEntry table[MAX_IP];
     while(!quit)    {
         sleep(period);
-        pthread_mutex_lock(&lock);
         for(uint8_t i = 0; i < MAX_IP; i++)    {
             if(neigh[i] == 1)   {
                 addr.sin_addr.s_addr = inet_addr(getIP(i));
                 for(uint8_t j = 0; j < MAX_IP; j++)
                     table[j] = mySelf.table[mySelf.myID][j];
-
-
-                char msg[] = "update";
-                if(sendto(myfd, (char *) msg, strlen(msg) * sizeof(char), 0, (struct sockaddr *) &addr, addrLen) == -1)  {
-                    perror("sendto1");
-                    pthread_exit(NULL);
-                }
-
 
                 if(sendto(myfd, (struct tableEntry *) table, MAX_IP * sizeof(struct tableEntry), 0, (struct sockaddr *) &addr, addrLen) == -1)  {
                     perror("sendto");
@@ -305,17 +310,17 @@ void *ptSendUpdate(void *args)
                 }
             }
         }
-        pthread_mutex_unlock(&lock);
     }
     pthread_exit(NULL);
 }
-
+/*
 void *ptRecvData(void* args)
 {
     struct sockaddr_in addr;
     socklen_t addrLen = sizeof(addr);
 
     while(!quit)    {
+printf("ta\n");
         char msg[10] = {0};
         ssize_t recvd = recvfrom(myfd, (char *) msg, 10 * sizeof(char), 0, (struct sockaddr *) &addr, &addrLen);
         if(recvd <= 0)  {
@@ -336,5 +341,15 @@ void *ptRecvData(void* args)
         pthread_mutex_unlock(&lock);
     }
     pthread_exit(args);
+}
+*/
+
+void printTable(struct tableEntry *table)
+{
+    fprintf(stdout, "destino\t\tcusto\tnextHop\n");
+    for(uint8_t i = 0; i < MAX_IP; i++) {
+        if(table[i].nextHop != NOLINK)
+            fprintf(stdout, "%s\t%hu\t%s\n", getIP(table[i].nextHop), table[i].cost, getIP(table[i].nextHop));
+    }
 }
 
